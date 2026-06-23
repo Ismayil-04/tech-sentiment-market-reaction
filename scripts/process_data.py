@@ -11,7 +11,6 @@ sp500 = pd.read_csv("data/raw/SP500.csv")
 sp500["Date"] = pd.to_datetime(sp500["Date"])
 sp500 = sp500.sort_values("Date")
 
-# Force numbers to float so the math works
 sp500["Close"] = pd.to_numeric(sp500["Close"], errors='coerce')
 sp500["Market_Return"] = sp500["Close"].pct_change()
 m_returns = sp500[["Date", "Market_Return"]]
@@ -24,7 +23,6 @@ for t in tickers:
     df["Date"] = pd.to_datetime(df["Date"])
     df = df.sort_values("Date")
     
-    # Force stock prices to float numbers
     df["Close"] = pd.to_numeric(df["Close"], errors='coerce')
     df["Stock_Return"] = df["Close"].pct_change()
     df["Ticker"] = t
@@ -36,16 +34,24 @@ final_df = pd.merge(final_df, m_returns, on="Date", how="left")
 
 news_file = "data/raw/news_events.csv"
 if os.path.exists(news_file):
-    print("Merging news dummy variables...")
+    print("Merging news data...")
     news_df = pd.read_csv(news_file)
+    
+    if "date" in news_df.columns:
+        news_df = news_df.rename(columns={"date": "Date"})
     news_df["Date"] = pd.to_datetime(news_df["Date"])
     
+    if "Ticker" not in news_df.columns:
+        news_df["Ticker"] = "AAPL"
+        if "title" in news_df.columns:
+            for t in tickers:
+                news_df.loc[news_df["title"].str.contains(t, case=False, na=False), "Ticker"] = t
+
     master_data = pd.merge(final_df, news_df, on=["Date", "Ticker"], how="left")
     
-    dummies = ["Dim_Financial", "Dim_Regulatory", "Dim_Operational"]
-    for d in dummies:
-        if d in master_data.columns:
-            master_data[d] = master_data[d].fillna(0).astype(int)
+    if "sentiment_cat" in master_data.columns:
+        master_data["Is_Negative"] = (master_data["sentiment_cat"] == "negative").astype(int)
+        master_data["Is_Positive"] = (master_data["sentiment_cat"] == "positive").astype(int)
             
     master_data.to_csv("data/processed/master_regression_data.csv", index=False)
     print("Master dataset saved to data/processed/")
